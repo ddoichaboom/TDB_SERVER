@@ -101,7 +101,9 @@ export class DispenserService {
         };
       }
 
-      this.logger.log(`✅ 인증 성공: ${user.name} (${user.role})`);
+      this.logger.log(
+        `✅ 인증 성공: ${user.name} (${user.role}) - took_today: ${user.took_today}`,
+      );
       return {
         status: 'ok',
         user: {
@@ -109,6 +111,7 @@ export class DispenserService {
           name: user.name,
           role: user.role,
           connect: user.connect,
+          took_today: user.took_today, // ✅ took_today 정보 추가
         },
       };
     } catch (error: unknown) {
