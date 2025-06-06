@@ -227,7 +227,7 @@ export class DispenserService {
   }
 
   /**
-   * RFID UID로 배출할 약 목록 조회 (현재 시간 이후 시간대 포함)
+   * RFID UID로 배출할 약 목록 조회 (슬롯 정보 포함)
    */
   async getDispenseListByKitUid(k_uid: string) {
     try {
@@ -262,12 +262,53 @@ export class DispenserService {
         return s.medicine.target_users.includes(user.user_id);
       });
 
-      return validSchedules.map((s) => ({
-        medi_id: s.medi_id,
-        medicine_name: s.medicine?.name || '',
-        dose: s.dose,
-        time_of_day: s.time_of_day,
-      }));
+      // ✅ 각 약물에 대한 슬롯 정보 조회
+      const dispenseList: Array<{
+        medi_id: string;
+        medicine_name: string;
+        dose: number;
+        time_of_day: string;
+        slot: number;
+        remain: number;
+      }> = [];
+
+      for (const schedule of validSchedules) {
+        // 해당 약물의 기기 슬롯 정보 조회
+        const machine = await this.machineRepo.findOne({
+          where: {
+            medi_id: schedule.medi_id,
+            owner: user.connect,
+          },
+          relations: ['medicine'],
+        });
+
+        if (!machine) {
+          this.logger.warn(`기기에 설정되지 않은 약물: ${schedule.medi_id}`);
+          continue;
+        }
+
+        if (machine.remain < schedule.dose) {
+          this.logger.warn(
+            `잔량 부족 - ${machine.medicine?.name} (요구: ${schedule.dose}, 잔량: ${machine.remain})`,
+          );
+          continue;
+        }
+
+        dispenseList.push({
+          medi_id: schedule.medi_id,
+          medicine_name: schedule.medicine?.name || '',
+          dose: schedule.dose,
+          time_of_day: schedule.time_of_day,
+          slot: machine.slot, // ✅ 슬롯 정보 추가
+          remain: machine.remain, // ✅ 잔량 정보 추가
+        });
+      }
+
+      this.logger.log(
+        `배출 목록 조회 완료 - 사용자: ${user.name}, 배출 대상: ${dispenseList.length}개`,
+      );
+
+      return dispenseList;
     } catch (error: unknown) {
       this.handleError(error, '배출 목록 조회');
     }
